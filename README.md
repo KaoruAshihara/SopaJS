@@ -5,3 +5,5 @@ panoramic sounds can be played without any plugins.
 See the URL below for further information.
 
 https://staff.aist.go.jp/ashihara-k/SopaJS.html
+
+SopaJS is released under the MIT license.
