@@ -1,0 +1,62 @@
+<!-- Panoramic sound test page -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="GENERATOR" content="JustSystems Homepage Builder 
+Version 18.0.13.0 for Windows">
+
+<title>SOPA test page</title>
+</head>
+
+<body>
+<font face="Berlin Sans FB" size="+2" color="#009060">
+<div id="message" align="center">SOPA test page</div></font>
+
+<div id="controls" align="center">
+<!-- Button to start and stop reproduction -->
+<button id="play" type="button" value="play" 
+style="font-size : large;" disabled>
+LOADING</button><br>
+
+<!-- Button to pan left -->
+<button id="left" type="button" value="left" style="font-size : large;">
+&lt &lt LEFT </button>
+
+<font face="Berlin Sans FB" size="+2" color="#009060">
+&nbsp Panning &nbsp</font>
+
+<!-- Button to pan right -->
+<button id="right" type="button" value="right" style="font-size : large;">
+RIGHT &gt &gt</button>
+</div>
+
+<font face="Berlin Sans FB" size="+2" color="#009060">
+<div id="pan" align="center">
+0<!-- This number indicates the horizontal angle in degree -->
+</div></font>
+
+<font face="Berlin Sans FB" size="+2" color="#009060">
+<div id="degree" align="center">
+degree</div></font>
+
+<div id="controls" align="center">
+<!-- Button to change directionality -->
+<button id="cardioid" type="button" value="cardioid" 
+style="font-size : large;">
+OMNIDIRECTIONAL</button><br></div>
+<br>
+
+<!-- Location of the SOPA file -->
+<div id="sopaUrl" style="display:none">cygne22k.sopa</div>
+
+<!-- Location of the HRTF database files -->
+<div id="hrtfUrl" style="display:none">../hrtf3d512.bin</div>
+<div id="phaseUrl" style="display:none">../phase3d512.bin</div>
+
+<script src="../Sopa.min.js"></script>
+<script src="sopaTest.js"></script>
+
+<p style="text-align : right;" align="right">Copyright&copy; 2016 AIST</p>
+</body>
+</html>
