@@ -1,4 +1,4 @@
-// Sopa.js version 1.0
+// Sopa.js version 1.1
 // JavaScript source code for reproducing a SOPA file
 // Created by Kaoru Ashihara
 /*
@@ -32,6 +32,7 @@ Sopa = function (url) {
     var isDatabaseReady = false;
     var isIphone = false;
     var isMobile = false;
+    var isLastLoop = false;
     var noError = true;
     var cardioid = 0;   // Directionality Omini;0, Cardioid;1, Cardioid^2;2
     var hrtfStr;    // for the location of HRTF level database file (hrtf3d512.bin)
@@ -40,16 +41,21 @@ Sopa = function (url) {
     var phaseHttp = new XMLHttpRequest();
     var hrtf_buffer = new Int16Array(130048);   // Array for the HRTF level data
     var phase_buffer = new Int16Array(130048);  // Array for the HRTF phase data
-    var sopaArray;  // Array for the directional parameters
-    var pcmArray;   // Array for the PCM data stream
+    var sopaArray0, sopaArray1;  // Array for the directional parameters
+    var pcmArray0, pcmArray1;   // Array for the PCM data stream
     var header;     // Header of the SOPA file
+    var loadNum = 0;
+    var playNum;
     var sopaSampleRate = 0;
     var sopaVersion;
     var bufsize = 0;    // Size of AudioContext buffer
     var currentOffset = 0;
+    var datanum = 0;
+    var originum = 0;
+    var processed;
     var sDataL;
     var sDataR;
-    var AudioContext = window.AudioContext || window.webkitAudioContext;
+    var AudioContext;
     var audiocontext;
     var scrproc;
     var sampleRate;     // Sampling rate of the audio device
@@ -60,7 +66,7 @@ Sopa = function (url) {
     var dHann;          // for window function
     var dirArray = new Array(256);
     var coordVect = new Array();
-    var vecFocus = [0,0,1];    // Coordinates of the focus direction
+    var vecFocus = [0, 0, 1];    // Coordinates of the focus direction
     var progress = 0;
     var lStock = new Float32Array(2229);
     var rStock = new Float32Array(2229);
@@ -76,6 +82,7 @@ Sopa = function (url) {
             isMobile = true;
 
         try {
+            AudioContext = window.AudioContext || window.webkitAudioContext;
             audiocontext = new AudioContext();
         }
         catch (e) {
@@ -84,7 +91,7 @@ Sopa = function (url) {
         }
 
         sampleRate = audiocontext.sampleRate;
-//        console.log("SampleRate " + sampleRate);
+        //        console.log("SampleRate " + sampleRate);
         if (sopaSampleRate == 0) {
             alert("SOPA data not available!");
             return (false);
@@ -93,6 +100,7 @@ Sopa = function (url) {
         horizontalAngle = 36;       // Initial value of pan
         verticalAngle = 18;         // Initial value of tilt
         bufsize = 4096;             // Size of audiocontext buffer
+        playNum = 0;
 
         // Prepare window function ****************
         dHann = new Float32Array(fftSize);  // Array for the window function
@@ -124,8 +132,8 @@ Sopa = function (url) {
                     nTilt = Math.PI * iTilt / 36;
                     var iVar = this.modifySector(iSect, nPan, nTilt);
                     dirArray[iSect][iPan][iTilt + 18] = parseInt(iVar);
-//                    if(iSect == 138 && iTilt == 0)
-//                        console.log(iSect + " " + iPan + " " + parseInt(iVar));
+                    //                    if(iSect == 138 && iTilt == 0)
+                    //                        console.log(iSect + " " + iPan + " " + parseInt(iVar));
                 }
             }
         }
@@ -153,7 +161,7 @@ Sopa = function (url) {
         var that = this;
         if (hrtfHttp.readyState == 4 && hrtfHttp.status == 200) {
             hrtf_buffer = new Int16Array(hrtfHttp.response); // HRTF (amplitude) data
-//            console.log("Hrtf data loaded " + hrtf_buffer.byteLength);
+            //            console.log("Hrtf data loaded " + hrtf_buffer.byteLength);
             progress++;
             if (progress > 1)
                 isDatabaseReady = true;
@@ -164,7 +172,7 @@ Sopa = function (url) {
         var that = this;
         if (phaseHttp.readyState == 4 && phaseHttp.status == 200) {
             phase_buffer = new Int16Array(phaseHttp.response); // HRTF (phase) data
-//            console.log("Phase data loaded " + phase_buffer.byteLength);
+            //            console.log("Phase data loaded " + phase_buffer.byteLength);
             progress++;
             if (progress > 1)
                 isDatabaseReady = true;
@@ -181,7 +189,7 @@ Sopa = function (url) {
     Sopa.prototype.loadSopa = function (back) {
         var _this = this;
         var sopaHttp = new XMLHttpRequest();
-//        console.log("Loading SOPA file " + this.urlStr);
+        //        console.log("Loading SOPA file " + this.urlStr);
         sopaHttp.open("GET", this.urlStr, true);
         sopaHttp.responseType = "arraybuffer";
         sopaHttp.onreadystatechange = function () {
@@ -198,39 +206,42 @@ Sopa = function (url) {
 
     Sopa.prototype.handleSopa = function (req) {
         var that = this;
-        var i;
         var sopa_buffer = req.response;
         var dataview = new DataView(sopa_buffer);
         var sampleNum = (dataview.byteLength - 44) / 4;
-        header = new Uint8Array(44);                            // Header of the SOPA file
-        pcmArray = new Int16Array(sampleNum);                   // PCM data array
-        sopaArray = new Uint8Array(sampleNum * 2);              // Directional data array
+        header = new Uint8Array(sopa_buffer, 0, 44);                            // Header of the SOPA file
+        if (loadNum == 0) {
+            sopaArray0 = new Uint8Array(sopa_buffer, 44, sampleNum * 4);              // Directional data array
+            pcmArray0 = new Int16Array(sopa_buffer, 44, sampleNum * 2);                   // PCM data array
+        }
+        else {
+            sopaArray1 = new Uint8Array(sopa_buffer, 44, sampleNum * 4);              // Directional data array
+            pcmArray1 = new Int16Array(sopa_buffer, 44, sampleNum * 2);                   // PCM data array
+        }
 
-        for (i = 0; i < 44; i++) {
-            header[i] = dataview.getUint8(i);                   // Header of the SOPA file
+        //        console.log("Number of samples " + pcmArray0.length);
+        if (originum == 0) {
+            if (!that.checkHeader())
+                noError = false;
+            else
+                noError = true;
         }
-        for (i = 0; i < sampleNum; i++) {
-            sopaArray[i * 2] = dataview.getUint8(45 + i * 4);
-            sopaArray[i * 2 + 1] = dataview.getUint8(44 + i * 4);
-            pcmArray[i] = dataview.getInt16(46 + i * 4, true); // PCM data stream
-        }
-//        console.log("Number of samples " + pcmArray.length);
-        if (!that.checkHeader())
-            noError = false;
+        if (loadNum == 0)
+            loadNum = 1;
         else
-            noError = true;
+            loadNum = 0;
     };
 
     Sopa.prototype.checkHeader = function () {
         var compU = new Uint8Array(4);
         var chunkSize;
-        
+
         for (i = 8; i < 12; i++) {
             compU[i - 8] = header[i];
         }
         if (compU[0] != 83 || compU[1] != 79 || compU[2] != 80 || compU[3] != 65) {
             alert("Data format error!");
-            return(false);
+            return (false);
         }
 
         for (i = 12; i < 15; i++) {
@@ -238,7 +249,7 @@ Sopa = function (url) {
         }
         if (compU[0] != 102 || compU[1] != 109 || compU[2] != 116) {
             alert("Data format error!");
-            return(false);
+            return (false);
         }
 
         if (header[16] != 16) {
@@ -254,7 +265,7 @@ Sopa = function (url) {
             return (false);
         }
 
-//        console.log("Version " + header[39] + "." + header[38] + "." + header[37]);
+        //        console.log("Version " + header[39] + "." + header[38] + "." + header[37]);
         sopaVersion = header[39];
         if (sopaVersion < 2) {
             alert("Sorry, this version is not supported");
@@ -271,18 +282,20 @@ Sopa = function (url) {
         chunkSize += lLong;
         chunkSize += header[40];
 
-//        console.log("ChunkSize " + chunkSize);
-
-        var i = 1;
-        while (sopaArray[i] != 255 || i > 4096)
-            i++;
-        fftSize = i * 2;                // FFT size
-        if (fftSize > 4096) {
-            alert("Something wrong!");
-            return (false);
+        //        return (false);
+        if (fftSize == 0) {
+            var i = 5;
+            while (sopaArray0[i] != 255 && i <= 4096)
+                i += 4;
+            fftSize = i - 1;                // FFT size
+            if (fftSize > 4096) {
+                alert("Something wrong!");
+                return (false);
+            }
+            //            console.log("FFT size " + fftSize);
+            sDataL = new Float32Array(fftSize);
+            sDataR = new Float32Array(fftSize);
         }
-        sDataL = new Float32Array(fftSize);
-        sDataR = new Float32Array(fftSize);
 
         return (true);
     };
@@ -317,10 +330,31 @@ Sopa = function (url) {
     }
 
     /*
+    /   Getter of total samples played
+    */
+    this.totalOffset = function () {
+        return originum;
+    }
+
+    /*
     /   Getter of sample rate
     */
     this.getSampleRate = function () {
         return sopaSampleRate;
+    }
+
+    /*
+    /   Setter of isLastLoop
+    */
+    this.setLastLoop = function (isThis) {
+        isLastLoop = isThis;
+    }
+
+    /*
+    /   Setter of the URL of SOPA file
+    */
+    this.setUrl = function (url) {
+        this.urlStr = url;
     }
 
     /*
@@ -356,7 +390,7 @@ Sopa = function (url) {
             focus = Math.PI;
         else
             focus = focusHor + Math.PI;
-        if(focusVer == undefined)
+        if (focusVer == undefined)
             focusVer = 0;
 
         vecFocus[0] = Math.sin(focus);
@@ -372,6 +406,7 @@ Sopa = function (url) {
             datanum = 0;
             currentOffset = 0;
             currenttime = 0;
+            playNum = 0;
             processed = 0;
 
             /* for iPhone, iPod touch and iPad
@@ -405,6 +440,7 @@ Sopa = function (url) {
     Sopa.prototype.Process = function (event) {
         var _this = this;
         var iSize = fftSize;
+        var wSize = fftSize * 2;
         var proc = iSize / 2;
         var Nyq = iSize / 2;
         var sPeriod = 1 / sampleRate;
@@ -430,6 +466,7 @@ Sopa = function (url) {
         var iSecond;
         var iNumImage;
         var iSecondImage;
+        var iBin;
         var nAtt = 2048.0;
         var dReR = new Float32Array(iSize);
         var dReL = new Float32Array(iSize);
@@ -439,6 +476,9 @@ Sopa = function (url) {
         var buf1 = event.outputBuffer.getChannelData(1);
         var stock = processed - datanum;
         var sub = lStock.subarray(0, stock);
+        var pcmsub, pcmnew, pcmadd, pcmtarg;
+        var currSample;
+
         buf0.set(sub, 0);
         sub = rStock.subarray(0, stock);
         buf1.set(sub, 0);
@@ -447,137 +487,185 @@ Sopa = function (url) {
         var frames = Math.ceil((bufsize - stock) / (ratio * proc));
         var count = stock;
         for (var frm = 0; frm < frames; frm++) {
-            var pcmsub = pcmArray.subarray(currentOffset, currentOffset + fftSize);
+            currSample = currentOffset * 2;
+            if (playNum == 0) {
+                if (currSample + wSize > pcmArray0.length) {
+                    pcmtarg = pcmArray0.subarray(currSample, pcmArray0.length);
+                    if (pcmArray1 != null)
+                        pcmadd = pcmArray1.subarray(0, currSample + wSize - pcmArray0.length);
+                    else
+                        pcmadd = pcmArray0.subarray(0, currSample + wSize - pcmArray0.length);
+                    pcmnew = new Int16Array(pcmtarg.length + pcmadd.length);
+                    pcmnew.set(pcmtarg);
+                    pcmnew.set(pcmadd, pcmtarg.length);
+                }
+                else
+                    pcmnew = pcmArray0.subarray(currSample, currSample + wSize);
+            }
+            else {
+                if (currSample + wSize > pcmArray1.length) {
+                    pcmtarg = pcmArray1.subarray(currSample, pcmArray1.length);
+                    pcmadd = pcmArray0.subarray(0, currSample + wSize - pcmArray1.length);
+                    pcmnew = new Int16Array(pcmtarg.length + pcmadd.length);
+                    pcmnew.set(pcmtarg);
+                    pcmnew.set(pcmadd, pcmtarg.length);
+                }
+                else
+                    pcmnew = pcmArray1.subarray(currSample, currSample + wSize);
+            }
             var pcm = new Float32Array(fftSize);
             var image = new Float32Array(fftSize);
-            pcm.set(pcmsub, 0);
+            for (iBin = 0; iBin < fftSize; iBin++)
+                pcm[iBin] = pcmnew[iBin * 2 + 1];
+            //            pcm.set(pcmnew, 0);
             var newObj = { "real": pcm, "image": image };
             this.fastFt(newObj, false);
-            var address = currentOffset * 2;
-            var addNyq = address + Nyq;
+            var address = currSample * 2;
+            var addNyq = address + iSize;
             dReL[Nyq] = pcm[Nyq] * Math.cos(image[Nyq]);
             dReR[Nyq] = pcm[Nyq] * Math.cos(image[Nyq]);
             dImL[Nyq] = pcm[Nyq] * Math.sin(image[Nyq]);
             dImR[Nyq] = pcm[Nyq] * Math.sin(image[Nyq]);
-            for (var iBin = 0; iBin < Nyq; iBin++) {
+            for (iBin = 0; iBin < Nyq; iBin++) {
                 iMirror = iSize - iBin;
                 iFreq = parseInt(iBin / iRatio);
                 if (iFreq == 0)
                     iImg = iFreq;
                 else
                     iImg = 511 - iFreq;
-                if (iBin < Nyq) {
-                    dir = sopaArray[address + iBin];
-                    if (sopaVersion > 2)
-                        dirsec = sopaArray[addNyq + iBin];
+                if (playNum == 0) {
+                    if (iBin % 2 == 0)
+                        dir = sopaArray0[address + iBin * 2 + 1];
                     else
-                        dirsec = dir;
-                    if (iFreq == 0) {
-                        dSpR = dSpL = pcm[iBin];
-                        dPhaseL = dPhaseR = image[iBin];
-                        if (iBin > 0) {
-                            dSpImageL = dSpImageR = pcm[iMirror];
-                            dPhaseImageL = dPhaseImageR = image[iMirror];
-                        }
+                        dir = sopaArray0[address + (iBin - 1) * 2];
+                }
+                else {
+                    if (iBin % 2 == 0)
+                        dir = sopaArray1[address + iBin * 2 + 1];
+                    else
+                        dir = sopaArray1[address + (iBin - 1) * 2];
+                }
+                if (sopaVersion > 2) {
+                    if (playNum == 0) {
+                        if (iBin % 2 == 0)
+                            dirsec = sopaArray0[addNyq + iBin * 2 + 1];
+                        else
+                            dirsec = sopaArray0[addNyq + (iBin - 1) * 2];
                     }
-                    else if (dir >= 254 && dirsec >= 254) {
-                        dSpR = dSpL = pcm[iBin];
-                        dPhaseL = dPhaseR = image[iBin];
+                    else {
+                        if (iBin % 2 == 0)
+                            dirsec = sopaArray1[addNyq + iBin * 2 + 1];
+                        else
+                            dirsec = sopaArray1[addNyq + (iBin - 1) * 2];
+                    }
+                }
+                else
+                    dirsec = dir;
+                if (iFreq == 0) {
+                    dSpR = dSpL = pcm[iBin];
+                    dPhaseL = dPhaseR = image[iBin];
+                    if (iBin > 0) {
                         dSpImageL = dSpImageR = pcm[iMirror];
                         dPhaseImageL = dPhaseImageR = image[iMirror];
                     }
+                }
+                else if (dir >= 254 && dirsec >= 254) {
+                    dSpR = dSpL = pcm[iBin];
+                    dPhaseL = dPhaseR = image[iBin];
+                    dSpImageL = dSpImageR = pcm[iMirror];
+                    dPhaseImageL = dPhaseImageR = image[iMirror];
+                }
+                else {
+                    if (dir > 253)
+                        dir = dirsec;
+                    else if (dirsec > 253)
+                        dirsec = dir;
+                    dil = this.opposit(dir);
+                    dir = dirArray[dir][horizontalAngle][verticalAngle];
+                    dilsec = this.opposit(dirsec);
+                    dirsec = dirArray[dirsec][horizontalAngle][verticalAngle];
+                    if (cardioid > 0) {
+                        var coord = this.initCoord(dir);
+                        dWeight_a = this.polar(vecFocus, coord);
+                        coord = this.initCoord(dirsec);
+                        dWeight_b = this.polar(vecFocus, coord);
+                        if (cardioid == 2) {
+                            dWeight_a *= dWeight_a;
+                            dWeight_b *= dWeight_b;
+                        }
+                    }
+                    if (horizontalAngle == 0) {
+                        dil = dirArray[dil][horizontalAngle][verticalAngle];
+                    }
                     else {
-                        if (dir > 253)
-                            dir = dirsec;
-                        else if (dirsec > 253)
-                            dirsec = dir;
-                        dil = this.opposit(dir);
-                        dir = dirArray[dir][horizontalAngle][verticalAngle];
-                        dilsec = this.opposit(dirsec);
-                        dirsec = dirArray[dirsec][horizontalAngle][verticalAngle];
-                        if (cardioid > 0) {
-                            var coord = this.initCoord(dir);                            
-                            dWeight_a = this.polar(vecFocus, coord);
-                            coord = this.initCoord(dirsec);
-                            dWeight_b = this.polar(vecFocus, coord);
-                            if (cardioid == 2) {
-                                dWeight_a *= dWeight_a;
-                                dWeight_b *= dWeight_b;
-                            }
-                        }
-                        if (horizontalAngle == 0) {
-                            dil = dirArray[dil][horizontalAngle][verticalAngle];
-                        }
-                        else {
-                            dil = dirArray[dil][72 - horizontalAngle][verticalAngle];
-                        }
-                        if (horizontalAngle == 0)
-                            dilsec = dirArray[dilsec][horizontalAngle][verticalAngle];
+                        dil = dirArray[dil][72 - horizontalAngle][verticalAngle];
+                    }
+                    if (horizontalAngle == 0)
+                        dilsec = dirArray[dilsec][horizontalAngle][verticalAngle];
+                    else
+                        dilsec = dirArray[dilsec][72 - horizontalAngle][verticalAngle];
+                    iNumber = 512 * dir + iFreq;
+                    iNumImage = 512 * dir + iImg;
+                    var nPwr = hrtf_buffer[iNumber] * dWeight_a / nAtt;
+                    iSecond = 512 * dirsec + iFreq;
+                    iSecondImage = 512 * dirsec + iImg;
+                    nPwr += hrtf_buffer[iSecond] * dWeight_b / nAtt;
+                    nPwr /= 2;
+                    var nPhase = phase_buffer[iNumber] / 10000.0;
+                    nPhase += phase_buffer[iSecond] / 10000.0;
+                    nPhase /= 2.0;
+                    if (Math.abs(phase_buffer[iNumber] - phase_buffer[iSecond]) > 31415) {
+                        if (nPhase < 0)
+                            nPhase += Math.PI;
                         else
-                            dilsec = dirArray[dilsec][72 - horizontalAngle][verticalAngle];
-                        iNumber = 512 * dir + iFreq;
-                        iNumImage = 512 * dir + iImg;
-                        var nPwr = hrtf_buffer[iNumber] * dWeight_a / nAtt;
-                        iSecond = 512 * dirsec + iFreq;
-                        iSecondImage = 512 * dirsec + iImg;
-                        nPwr += hrtf_buffer[iSecond] * dWeight_b / nAtt;
-                        nPwr /= 2;
-                        var nPhase = phase_buffer[iNumber] / 10000.0;
-                        nPhase += phase_buffer[iSecond] / 10000.0;
-                        nPhase /= 2.0;
-                        if (Math.abs(phase_buffer[iNumber] - phase_buffer[iSecond]) > 31415) {
-                            if (nPhase < 0)
-                                nPhase += Math.PI;
-                            else
-                                nPhase -= Math.PI;
-                        }
-                        dSpR = pcm[iBin] * nPwr;
-                        dPhaseR = image[iBin] + nPhase;
-                        nPwr = hrtf_buffer[iNumImage] * dWeight_a / nAtt;
-                        nPwr += hrtf_buffer[iSecondImage] * dWeight_b / nAtt;
-                        nPwr /= 2;
-                        dSpImageR = pcm[iMirror] * nPwr;
-                        nPhase = phase_buffer[iNumImage] / 10000.0;
-                        nPhase += phase_buffer[iSecondImage] / 10000.0;
-                        nPhase /= 2.0;
-                        dPhaseImageR = image[iMirror] + nPhase;
-                        iNumber = 512 * dil + iFreq;
-                        iNumImage = 512 * dil + iImg;
-                        nPwr = hrtf_buffer[iNumber] * dWeight_a / nAtt;
-                        iSecond = 512 * dilsec + iFreq;
-                        iSecondImage = 512 * dilsec + iImg;
-                        nPwr += hrtf_buffer[iSecond] * dWeight_b / nAtt;
-                        nPwr /= 2;
-                        nPhase = phase_buffer[iNumber] / 10000.0;
-                        nPhase += phase_buffer[iSecond] / 10000.0;
-                        nPhase /= 2.0;
-                        if (Math.abs(phase_buffer[iNumber] - phase_buffer[iSecond]) > 31415) {
-                            if (nPhase < 0)
-                                nPhase += Math.PI;
-                            else
-                                nPhase -= Math.PI;
-                        }
-                        dSpL = pcm[iBin] * nPwr;
-                        dPhaseL = image[iBin] + nPhase;
-                        nPwr = hrtf_buffer[iNumImage] * dWeight_a / nAtt;
-                        nPwr += hrtf_buffer[iSecondImage] * dWeight_b / nAtt;
-                        nPwr /= 2;
-                        dSpImageL = pcm[iMirror] * nPwr;
-                        nPhase = phase_buffer[iNumImage] / 10000.0;
-                        nPhase += phase_buffer[iSecondImage] / 10000.0;
-                        nPhase /= 2.0;
-                        dPhaseImageL = image[iMirror] + nPhase;
+                            nPhase -= Math.PI;
                     }
-                    dReL[iBin] = dSpL * Math.cos(dPhaseL);
-                    dReR[iBin] = dSpR * Math.cos(dPhaseR);
-                    dImL[iBin] = dSpL * Math.sin(dPhaseL);
-                    dImR[iBin] = dSpR * Math.sin(dPhaseR);
-                    if (iBin > 0) {
-                        dReL[iMirror] = dSpImageL * Math.cos(dPhaseImageL);
-                        dReR[iMirror] = dSpImageR * Math.cos(dPhaseImageR);
-                        dImL[iMirror] = dSpImageL * Math.sin(dPhaseImageL);
-                        dImR[iMirror] = dSpImageR * Math.sin(dPhaseImageR);
+                    dSpR = pcm[iBin] * nPwr;
+                    dPhaseR = image[iBin] + nPhase;
+                    nPwr = hrtf_buffer[iNumImage] * dWeight_a / nAtt;
+                    nPwr += hrtf_buffer[iSecondImage] * dWeight_b / nAtt;
+                    nPwr /= 2;
+                    dSpImageR = pcm[iMirror] * nPwr;
+                    nPhase = phase_buffer[iNumImage] / 10000.0;
+                    nPhase += phase_buffer[iSecondImage] / 10000.0;
+                    nPhase /= 2.0;
+                    dPhaseImageR = image[iMirror] + nPhase;
+                    iNumber = 512 * dil + iFreq;
+                    iNumImage = 512 * dil + iImg;
+                    nPwr = hrtf_buffer[iNumber] * dWeight_a / nAtt;
+                    iSecond = 512 * dilsec + iFreq;
+                    iSecondImage = 512 * dilsec + iImg;
+                    nPwr += hrtf_buffer[iSecond] * dWeight_b / nAtt;
+                    nPwr /= 2;
+                    nPhase = phase_buffer[iNumber] / 10000.0;
+                    nPhase += phase_buffer[iSecond] / 10000.0;
+                    nPhase /= 2.0;
+                    if (Math.abs(phase_buffer[iNumber] - phase_buffer[iSecond]) > 31415) {
+                        if (nPhase < 0)
+                            nPhase += Math.PI;
+                        else
+                            nPhase -= Math.PI;
                     }
+                    dSpL = pcm[iBin] * nPwr;
+                    dPhaseL = image[iBin] + nPhase;
+                    nPwr = hrtf_buffer[iNumImage] * dWeight_a / nAtt;
+                    nPwr += hrtf_buffer[iSecondImage] * dWeight_b / nAtt;
+                    nPwr /= 2;
+                    dSpImageL = pcm[iMirror] * nPwr;
+                    nPhase = phase_buffer[iNumImage] / 10000.0;
+                    nPhase += phase_buffer[iSecondImage] / 10000.0;
+                    nPhase /= 2.0;
+                    dPhaseImageL = image[iMirror] + nPhase;
+                }
+                dReL[iBin] = dSpL * Math.cos(dPhaseL);
+                dReR[iBin] = dSpR * Math.cos(dPhaseR);
+                dImL[iBin] = dSpL * Math.sin(dPhaseL);
+                dImR[iBin] = dSpR * Math.sin(dPhaseR);
+                if (iBin > 0) {
+                    dReL[iMirror] = dSpImageL * Math.cos(dPhaseImageL);
+                    dReR[iMirror] = dSpImageR * Math.cos(dPhaseImageR);
+                    dImL[iMirror] = dSpImageL * Math.sin(dPhaseImageL);
+                    dImR[iMirror] = dSpImageR * Math.sin(dPhaseImageR);
                 }
             }
             newObj = { "real": dReL, "image": dImL };
@@ -625,13 +713,26 @@ Sopa = function (url) {
             pcmsub = sDataR.subarray(proc);
             sDataR = new Float32Array(fftSize);
             sDataR.set(pcmsub, 0);
-            if (currentOffset + iSize + proc >= pcmArray.length) {
-                frm = frames;
-                _this.Play();
+            var stream;
+            if (playNum == 0)
+                stream = pcmArray0.length / 2;
+            else
+                stream = pcmArray1.length / 2;
+            if (currentOffset + proc >= stream) {
+                if (!isLastLoop) {
+                    currentOffset = 0;
+                    if (playNum == 0 && pcmArray1)
+                        playNum = 1;
+                    else
+                        playNum = 0;
+                }
+                else {
+                    frm = frames;
+                    _this.play();
+                }
             }
-            else {
+            else
                 currentOffset += proc;
-            }
         }
     };
 
