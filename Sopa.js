@@ -1,10 +1,10 @@
-// Sopa.js version 1.1
+// Sopa.js version 1.1.1
 // JavaScript source code for reproducing a SOPA file
 // Created by Kaoru Ashihara
 /*
 The MIT License (MIT)
 
-Copyright (c) 2016 AIST
+Copyright (c) 2017 AIST
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -611,6 +611,7 @@ Sopa = function (url) {
                     iSecondImage = 512 * dirsec + iImg;
                     nPwr += hrtf_buffer[iSecond] * dWeight_b / nAtt;
                     nPwr /= 2;
+                    dSpR = pcm[iBin] * nPwr;
                     var nPhase = phase_buffer[iNumber] / 10000.0;
                     nPhase += phase_buffer[iSecond] / 10000.0;
                     nPhase /= 2.0;
@@ -620,7 +621,6 @@ Sopa = function (url) {
                         else
                             nPhase -= Math.PI;
                     }
-                    dSpR = pcm[iBin] * nPwr;
                     dPhaseR = image[iBin] + nPhase;
                     nPwr = hrtf_buffer[iNumImage] * dWeight_a / nAtt;
                     nPwr += hrtf_buffer[iSecondImage] * dWeight_b / nAtt;
@@ -629,6 +629,12 @@ Sopa = function (url) {
                     nPhase = phase_buffer[iNumImage] / 10000.0;
                     nPhase += phase_buffer[iSecondImage] / 10000.0;
                     nPhase /= 2.0;
+                    if (Math.abs(phase_buffer[iNumImage] - phase_buffer[iSecondImage]) > 31415) {
+                        if (nPhase < 0)
+                            nPhase += Math.PI;
+                        else
+                            nPhase -= Math.PI;
+                    }
                     dPhaseImageR = image[iMirror] + nPhase;
                     iNumber = 512 * dil + iFreq;
                     iNumImage = 512 * dil + iImg;
@@ -637,6 +643,7 @@ Sopa = function (url) {
                     iSecondImage = 512 * dilsec + iImg;
                     nPwr += hrtf_buffer[iSecond] * dWeight_b / nAtt;
                     nPwr /= 2;
+                    dSpL = pcm[iBin] * nPwr;
                     nPhase = phase_buffer[iNumber] / 10000.0;
                     nPhase += phase_buffer[iSecond] / 10000.0;
                     nPhase /= 2.0;
@@ -646,7 +653,6 @@ Sopa = function (url) {
                         else
                             nPhase -= Math.PI;
                     }
-                    dSpL = pcm[iBin] * nPwr;
                     dPhaseL = image[iBin] + nPhase;
                     nPwr = hrtf_buffer[iNumImage] * dWeight_a / nAtt;
                     nPwr += hrtf_buffer[iSecondImage] * dWeight_b / nAtt;
@@ -655,6 +661,12 @@ Sopa = function (url) {
                     nPhase = phase_buffer[iNumImage] / 10000.0;
                     nPhase += phase_buffer[iSecondImage] / 10000.0;
                     nPhase /= 2.0;
+                    if (Math.abs(phase_buffer[iNumImage] - phase_buffer[iSecondImage]) > 31415) {
+                        if (nPhase < 0)
+                            nPhase += Math.PI;
+                        else
+                            nPhase -= Math.PI;
+                    }
                     dPhaseImageL = image[iMirror] + nPhase;
                 }
                 dReL[iBin] = dSpL * Math.cos(dPhaseL);
