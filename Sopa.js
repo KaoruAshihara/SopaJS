@@ -1,4 +1,4 @@
-// Sopa.js version 1.1.1
+// Sopa.js version 1.2.0
 // JavaScript source code for reproducing a SOPA file
 // Created by Kaoru Ashihara
 /*
@@ -34,7 +34,7 @@ Sopa = function (url) {
     var isMobile = false;
     var isLastLoop = false;
     var noError = true;
-    var cardioid = 0;   // Directionality Omini;0, Cardioid;1, Cardioid^2;2
+    var cardioid = 0;   // Directionality Omini;0, Cardioid;1, Hypercardioid;2
     var hrtfStr;    // for the location of HRTF level database file (hrtf3d512.bin)
     var phaseStr;   // for the location of HRTF phase database file (phase3d512.bin)
     var hrtfHttp = new XMLHttpRequest();
@@ -66,10 +66,11 @@ Sopa = function (url) {
     var dHann;          // for window function
     var dirArray = new Array(256);
     var coordVect = new Array();
-    var vecFocus = [0, 0, 1];    // Coordinates of the focus direction
+    var vecFocus = [0, 0, -1];    // Coordinates of the focus direction
     var progress = 0;
     var lStock = new Float32Array(2229);
     var rStock = new Float32Array(2229);
+    const rightAngle = Math.PI / 2;
 
     this.setup = function () {
         var nTilt, nPan;
@@ -125,13 +126,13 @@ Sopa = function (url) {
             for (var iPan = 0; iPan < 72; iPan++) {
                 dirArray[iSect][iPan] = new Array(36);
                 if (iPan >= 36)
-                    nPan = -Math.PI * (72 - iPan) / 36;
+                    nPan = Math.PI * (iPan - 36) / 36;
                 else
-                    nPan = Math.PI * iPan / 36;
+                    nPan = -Math.PI * (36 - iPan) / 36;
                 for (var iTilt = -18; iTilt < 18; iTilt++) {
                     nTilt = Math.PI * iTilt / 36;
                     var iVar = this.modifySector(iSect, nPan, nTilt);
-                    dirArray[iSect][iPan][iTilt + 18] = parseInt(iVar);
+                    dirArray[iSect][iPan][iTilt + 18] = Math.floor(iVar);
                     //                    if(iSect == 138 && iTilt == 0)
                     //                        console.log(iSect + " " + iPan + " " + parseInt(iVar));
                 }
@@ -271,6 +272,7 @@ Sopa = function (url) {
             alert("Sorry, this version is not supported");
             return (false);
         }
+//        console.log("Version " + sopaVersion);
 
         chunkSize = header[43] & 0x000000ff;
         chunkSize *= 16777216;
@@ -387,9 +389,9 @@ Sopa = function (url) {
         cardioid = card;
 
         if (focusHor == undefined)
-            focus = Math.PI;
+            focus = -Math.PI;
         else
-            focus = focusHor + Math.PI;
+            focus = focusHor - Math.PI;
         if (focusVer == undefined)
             focusVer = 0;
 
@@ -460,14 +462,15 @@ Sopa = function (url) {
         var dPhaseL;
         var dPhaseImageR;
         var dPhaseImageL;
-        var dWeight_a = 1;
-        var dWeight_b = 1;
+        var dWeight = 1;
+        var dPhase = 0;
         var iNumber;
         var iSecond;
         var iNumImage;
         var iSecondImage;
         var iBin;
         var nAtt = 2048.0;
+        var pp = new Array(2);
         var dReR = new Float32Array(iSize);
         var dReL = new Float32Array(iSize);
         var dImR = new Float32Array(iSize);
@@ -528,11 +531,11 @@ Sopa = function (url) {
             dImR[Nyq] = pcm[Nyq] * Math.sin(image[Nyq]);
             for (iBin = 0; iBin < Nyq; iBin++) {
                 iMirror = iSize - iBin;
-                iFreq = parseInt(iBin / iRatio);
+                iFreq = Math.floor(iBin / iRatio);
                 if (iFreq == 0)
                     iImg = iFreq;
                 else
-                    iImg = 511 - iFreq;
+                    iImg = 512 - iFreq;
                 if (playNum == 0) {
                     if (iBin % 2 == 0)
                         dir = sopaArray0[address + iBin * 2 + 1];
@@ -545,7 +548,10 @@ Sopa = function (url) {
                     else
                         dir = sopaArray1[address + (iBin - 1) * 2];
                 }
-                if (sopaVersion > 2) {
+                if (sopaVersion < 3) {
+                    dirsec = dir;
+                }
+                else {
                     if (playNum == 0) {
                         if (iBin % 2 == 0)
                             dirsec = sopaArray0[addNyq + iBin * 2 + 1];
@@ -559,8 +565,6 @@ Sopa = function (url) {
                             dirsec = sopaArray1[addNyq + (iBin - 1) * 2];
                     }
                 }
-                else
-                    dirsec = dir;
                 if (iFreq == 0) {
                     dSpR = dSpL = pcm[iBin];
                     dPhaseL = dPhaseR = image[iBin];
@@ -580,94 +584,99 @@ Sopa = function (url) {
                         dir = dirsec;
                     else if (dirsec > 253)
                         dirsec = dir;
-                    dil = this.opposit(dir);
                     dir = dirArray[dir][horizontalAngle][verticalAngle];
-                    dilsec = this.opposit(dirsec);
+                    dil = this.opposit(dir);
                     dirsec = dirArray[dirsec][horizontalAngle][verticalAngle];
+                    dilsec = this.opposit(dirsec);
                     if (cardioid > 0) {
                         var coord = this.initCoord(dir);
-                        dWeight_a = this.polar(vecFocus, coord);
-                        coord = this.initCoord(dirsec);
-                        dWeight_b = this.polar(vecFocus, coord);
-                        if (cardioid == 2) {
-                            dWeight_a *= dWeight_a;
-                            dWeight_b *= dWeight_b;
-                        }
+                        var inate = this.initCoord(dirsec);
+                        var vecMean = this.getUnitVector(coord, inate);
+                        pp = this.polar(vecFocus, vecMean);
+                        dWeight = pp[0];
+                        dPhase = pp[1];
                     }
+                    else {
+                        dWeight = 1;
+                        dPhase = 0;
+                    }
+                    dWeight /= nAtt;
+/*
                     if (horizontalAngle == 0) {
                         dil = dirArray[dil][horizontalAngle][verticalAngle];
                     }
                     else {
                         dil = dirArray[dil][72 - horizontalAngle][verticalAngle];
                     }
-                    if (horizontalAngle == 0)
+                    if (horizontalAngle == 0) {
                         dilsec = dirArray[dilsec][horizontalAngle][verticalAngle];
+                    }
                     else
-                        dilsec = dirArray[dilsec][72 - horizontalAngle][verticalAngle];
+                        dilsec = dirArray[dilsec][72 - horizontalAngle][verticalAngle]; */
                     iNumber = 512 * dir + iFreq;
                     iNumImage = 512 * dir + iImg;
-                    var nPwr = hrtf_buffer[iNumber] * dWeight_a / nAtt;
+                    var nPwr = hrtf_buffer[iNumber] * dWeight;
                     iSecond = 512 * dirsec + iFreq;
                     iSecondImage = 512 * dirsec + iImg;
-                    nPwr += hrtf_buffer[iSecond] * dWeight_b / nAtt;
+                    nPwr += hrtf_buffer[iSecond] * dWeight;
                     nPwr /= 2;
                     dSpR = pcm[iBin] * nPwr;
                     var nPhase = phase_buffer[iNumber] / 10000.0;
                     nPhase += phase_buffer[iSecond] / 10000.0;
                     nPhase /= 2.0;
-                    if (Math.abs(phase_buffer[iNumber] - phase_buffer[iSecond]) > 31415) {
+                    if (Math.abs(phase_buffer[iNumber] - phase_buffer[iSecond]) > 31416) {
                         if (nPhase < 0)
                             nPhase += Math.PI;
                         else
                             nPhase -= Math.PI;
                     }
-                    dPhaseR = image[iBin] + nPhase;
-                    nPwr = hrtf_buffer[iNumImage] * dWeight_a / nAtt;
-                    nPwr += hrtf_buffer[iSecondImage] * dWeight_b / nAtt;
+                    dPhaseR = image[iBin] + nPhase + dPhase;
+                    nPwr = hrtf_buffer[iNumImage] * dWeight;
+                    nPwr += hrtf_buffer[iSecondImage] * dWeight;
                     nPwr /= 2;
                     dSpImageR = pcm[iMirror] * nPwr;
                     nPhase = phase_buffer[iNumImage] / 10000.0;
                     nPhase += phase_buffer[iSecondImage] / 10000.0;
                     nPhase /= 2.0;
-                    if (Math.abs(phase_buffer[iNumImage] - phase_buffer[iSecondImage]) > 31415) {
+                    if (Math.abs(phase_buffer[iNumImage] - phase_buffer[iSecondImage]) > 31416) {
                         if (nPhase < 0)
                             nPhase += Math.PI;
                         else
                             nPhase -= Math.PI;
                     }
-                    dPhaseImageR = image[iMirror] + nPhase;
+                    dPhaseImageR = image[iMirror] + nPhase + dPhase;
                     iNumber = 512 * dil + iFreq;
                     iNumImage = 512 * dil + iImg;
-                    nPwr = hrtf_buffer[iNumber] * dWeight_a / nAtt;
+                    nPwr = hrtf_buffer[iNumber] * dWeight;
                     iSecond = 512 * dilsec + iFreq;
                     iSecondImage = 512 * dilsec + iImg;
-                    nPwr += hrtf_buffer[iSecond] * dWeight_b / nAtt;
+                    nPwr += hrtf_buffer[iSecond] * dWeight;
                     nPwr /= 2;
                     dSpL = pcm[iBin] * nPwr;
                     nPhase = phase_buffer[iNumber] / 10000.0;
                     nPhase += phase_buffer[iSecond] / 10000.0;
                     nPhase /= 2.0;
-                    if (Math.abs(phase_buffer[iNumber] - phase_buffer[iSecond]) > 31415) {
+                    if (Math.abs(phase_buffer[iNumber] - phase_buffer[iSecond]) > 31416) {
                         if (nPhase < 0)
                             nPhase += Math.PI;
                         else
                             nPhase -= Math.PI;
                     }
-                    dPhaseL = image[iBin] + nPhase;
-                    nPwr = hrtf_buffer[iNumImage] * dWeight_a / nAtt;
-                    nPwr += hrtf_buffer[iSecondImage] * dWeight_b / nAtt;
+                    dPhaseL = image[iBin] + nPhase + dPhase;
+                    nPwr = hrtf_buffer[iNumImage] * dWeight;
+                    nPwr += hrtf_buffer[iSecondImage] * dWeight;
                     nPwr /= 2;
                     dSpImageL = pcm[iMirror] * nPwr;
                     nPhase = phase_buffer[iNumImage] / 10000.0;
                     nPhase += phase_buffer[iSecondImage] / 10000.0;
                     nPhase /= 2.0;
-                    if (Math.abs(phase_buffer[iNumImage] - phase_buffer[iSecondImage]) > 31415) {
+                    if (Math.abs(phase_buffer[iNumImage] - phase_buffer[iSecondImage]) > 31416) {
                         if (nPhase < 0)
                             nPhase += Math.PI;
                         else
                             nPhase -= Math.PI;
                     }
-                    dPhaseImageL = image[iMirror] + nPhase;
+                    dPhaseImageL = image[iMirror] + nPhase + dPhase;
                 }
                 dReL[iBin] = dSpL * Math.cos(dPhaseL);
                 dReR[iBin] = dSpR * Math.cos(dPhaseR);
@@ -867,12 +876,11 @@ Sopa = function (url) {
         else if (iSector < 9 || iSector >= 245) {
             nUnitLong = Math.PI / 4.0;
             nUnitHori = Math.cos(nUnitLat * 5);
+            coord[1] = Math.sin(nUnitLat * 5);
             if (iSector < 9) {
-                coord[1] = Math.sin(nUnitLat * 5);
                 nHoriAngl = nUnitLong * (iSector - 1) - Math.PI;
             }
             else {
-                coord[1] = Math.sin(nUnitLat * -5);
                 nHoriAngl = nUnitLong * (252 - iSector);
             }
             coord[0] = nUnitHori * Math.sin(nHoriAngl);
@@ -881,12 +889,11 @@ Sopa = function (url) {
         else if (iSector < 25 || iSector >= 229) {
             nUnitLong = Math.PI / 8;
             nUnitHori = Math.cos(nUnitLat * 4);
+            coord[1] = Math.sin(nUnitLat * 4);
             if (iSector < 25) {
-                coord[1] = Math.sin(nUnitLat * 4);
                 nHoriAngl = nUnitLong * (iSector - 9) - Math.PI;
             }
             else {
-                coord[1] = Math.sin(nUnitLat * -4);
                 nHoriAngl = nUnitLong * (244 - iSector);
             }
             coord[0] = nUnitHori * Math.sin(nHoriAngl);
@@ -895,12 +902,11 @@ Sopa = function (url) {
         else if (iSector < 49 || iSector >= 205) {
             nUnitLong = Math.PI / 12;
             nUnitHori = Math.cos(nUnitLat * 3);
+            coord[1] = Math.sin(nUnitLat * 3);
             if (iSector < 49) {
-                coord[1] = Math.sin(nUnitLat * 3);
                 nHoriAngl = nUnitLong * (iSector - 25) - Math.PI;
             }
             else {
-                coord[1] = Math.sin(nUnitLat * -3);
                 nHoriAngl = nUnitLong * (228 - iSector);
             }
             coord[0] = nUnitHori * Math.sin(nHoriAngl);
@@ -909,12 +915,11 @@ Sopa = function (url) {
         else if (iSector < 79 || iSector >= 175) {
             nUnitLong = Math.PI / 15;
             nUnitHori = Math.cos(nUnitLat * 2);
+            coord[1] = Math.sin(nUnitLat * 2);
             if (iSector < 79) {
-                coord[1] = Math.sin(nUnitLat * 2);
                 nHoriAngl = nUnitLong * (iSector - 49) - Math.PI;
             }
             else {
-                coord[1] = Math.sin(nUnitLat * -2);
                 nHoriAngl = nUnitLong * (204 - iSector);
             }
             coord[0] = nUnitHori * Math.sin(nHoriAngl);
@@ -923,12 +928,11 @@ Sopa = function (url) {
         else if (iSector < 111 || iSector >= 143) {
             nUnitLong = Math.PI / 16;
             nUnitHori = Math.cos(nUnitLat);
+            coord[1] = Math.sin(nUnitLat);
             if (iSector < 111) {
-                coord[1] = Math.sin(nUnitLat);
                 nHoriAngl = nUnitLong * (iSector - 79) - Math.PI;
             }
             else {
-                coord[1] = Math.sin(-nUnitLat);
                 nHoriAngl = nUnitLong * (174 - iSector);
             }
             coord[0] = nUnitHori * Math.sin(nHoriAngl);
@@ -1031,7 +1035,7 @@ Sopa = function (url) {
     /*
     /   Method returns a sector No. after applied pan and tilt
     */
-    Sopa.prototype.modifySector = function (iSector, nPan, nTilt) {
+    Sopa.prototype.modifySector = function (iSector, nPan, nTilt) {     // nPan default 0
         var iNewSect;
         var nUnitHori;
         var nHoriAngl = 0;
@@ -1062,15 +1066,18 @@ Sopa = function (url) {
         myCoord[0] = nUnitHori * Math.sin(nHoriAngl);
         myCoord[2] = nUnitHori * Math.cos(nHoriAngl);
         myCoord[1] = coordVect[iSector][1];
-        if (nTilt == 0 || myCoord[2] == 0)
-            iNewSect = this.calcSector(myCoord);
+//        if (nTilt == 0 || myCoord[2] == 0)                modified 20 Nov 2017
+        if (nTilt == 0 )
+                iNewSect = this.calcSector(myCoord);
         else {
             var xV = myCoord[0];
             var yV = myCoord[1];
             var zV = myCoord[2];
-            var nVerAngl = Math.atan2(yV, zV) + nTilt;
-            var nUnitVer = Math.sqrt(zV * zV + yV * yV);
-            myCoord[2] = nUnitVer * Math.cos(nVerAngl);
+            var xz = Math.sqrt(xV * xV + zV * zV);
+            var nVerAngl = Math.atan2(yV, xz) + nTilt;
+            var nUnitVer = Math.sqrt(xz * xz + yV * yV);
+            myCoord[0] = nUnitVer * Math.cos(nVerAngl) * Math.sin(nHoriAngl);
+            myCoord[2] = nUnitVer * Math.cos(nVerAngl) * Math.cos(nHoriAngl);
             myCoord[1] = nUnitVer * Math.sin(nVerAngl);
             iNewSect = this.calcSector(myCoord);
         }
@@ -1089,7 +1096,7 @@ Sopa = function (url) {
         else if (coor[1] <= -Math.sin(Math.PI * 11 / 24))
             return 253;
         else {
-            nHoriAngl = Math.atan2(coor[0], coor[2]);
+            nHoriAngl = Math.atan2(-coor[0], -coor[2]);
         }
         if (coor[1] >= Math.sin(Math.PI * 3 / 8)) {
             if (nHoriAngl < 0)
@@ -1141,16 +1148,63 @@ Sopa = function (url) {
     /   Get weight value of the target direction
     */
     Sopa.prototype.polar = function (focus, target) {
-        var weight;
+        var weight = new Array(2);
         var angle;
+        var theta;
         var dot;
 
         // dot product
         dot = target[0] * focus[0] + target[1] * focus[1] + target[2] * focus[2];
 
-        angle = Math.acos(dot);     //  Angle (0 <= angle < PI)
-        weight = (1 + Math.cos(angle)) / 2;
+        theta = Math.acos(dot);     //  Angle (0 <= theta < PI)
+        if (cardioid == 1) {
+            angle = rightAngle * (1 - Math.cos(theta) * Math.cos(target[3]));
+            //            weight = Math.cos(angle / 2);
+            weight[0] = (1 + Math.cos(angle)) / 2;
+            weight[1] = 0;
+        }
+        else if (cardioid == 2) {
+            angle = (Math.PI / 5) * (1 - Math.cos(theta) * Math.cos(target[3]));
+            weight[0] = Math.cos(angle / 2) * Math.cos(angle) * Math.cos(angle * 2) * Math.cos(angle * 4) * Math.cos(angle * 8);
+//            weight[1] = angle * 15.5 / 2;
+            weight[1] = 0;
+        }
+        else if (cardioid == 3) {
+            angle = (Math.PI / 5) * (1 - Math.cos(theta) * Math.cos(target[3]));
+            weight[0] = Math.cos(angle / 2) * Math.cos(angle) * Math.cos(angle * 2) * Math.cos(angle * 4) * Math.cos(angle * 8);
+            weight[0] *= Math.cos(angle * 16) * Math.cos(angle * 32);
+            weight[1] = angle * 63.5;
+        }
+        weight[0] = Math.abs(weight[0]);
         return weight;
+    };
+
+    Sopa.prototype.getUnitVector = function (v0, v1) {
+        var vec = [v0[0] + v1[0], v0[1] + v1[1], v0[2] + v1[2]];
+        var dL;
+        var dot;
+
+        dot = v0[0] * v1[0] + v0[1] * v1[1] + v0[2] * v1[2];
+        //        dL = Math.sqrt(v0[0] * v0[0] + v0[1] * v0[1] + v0[2] * v0[2]);
+        //        dL *= Math.sqrt(v1[0] * v1[0] + v1[1] * v1[1] + v1[2] * v1[2]);
+        if (dot > 1)
+            vec.push(0);
+        else if (dot < -1)
+            vec.push(rightAngle);
+        else
+            vec.push(Math.acos(dot) / 2);
+        dL = Math.sqrt(vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]);
+        if (dL > 0) {
+            vec[0] /= dL;
+            vec[1] /= dL;
+            vec[2] /= dL;
+        }
+        else {
+            vec[0] = 0;
+            vec[1] = 1;
+            vec[2] = 0;
+        }
+        return vec;
     };
 
 };
