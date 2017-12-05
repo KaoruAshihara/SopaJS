@@ -644,7 +644,7 @@ Sopa = function (url) {
                         else
                             nPhase -= Math.PI;
                     }
-                    dPhaseImageR = image[iMirror] + nPhase + dPhase;
+                    dPhaseImageR = image[iMirror] + nPhase - dPhase;
                     iNumber = 512 * dil + iFreq;
                     iNumImage = 512 * dil + iImg;
                     nPwr = hrtf_buffer[iNumber] * dWeight;
@@ -676,7 +676,7 @@ Sopa = function (url) {
                         else
                             nPhase -= Math.PI;
                     }
-                    dPhaseImageL = image[iMirror] + nPhase + dPhase;
+                    dPhaseImageL = image[iMirror] + nPhase - dPhase;
                 }
                 dReL[iBin] = dSpL * Math.cos(dPhaseL);
                 dReR[iBin] = dSpR * Math.cos(dPhaseR);
@@ -1161,19 +1161,19 @@ Sopa = function (url) {
             angle = rightAngle * (1 - Math.cos(theta) * Math.cos(target[3]));
             //            weight = Math.cos(angle / 2);
             weight[0] = (1 + Math.cos(angle)) / 2;
-            weight[1] = 0;
+            weight[1] = Math.acos(weight[0]);
         }
         else if (cardioid == 2) {
             angle = (Math.PI / 5) * (1 - Math.cos(theta) * Math.cos(target[3]));
             weight[0] = Math.cos(angle / 2) * Math.cos(angle) * Math.cos(angle * 2) * Math.cos(angle * 4) * Math.cos(angle * 8);
-//            weight[1] = angle * 15.5 / 2;
-            weight[1] = 0;
+//            weight[1] = angle * 15.5;
+            weight[1] = Math.acos(weight[0]);
         }
         else if (cardioid == 3) {
             angle = (Math.PI / 5) * (1 - Math.cos(theta) * Math.cos(target[3]));
             weight[0] = Math.cos(angle / 2) * Math.cos(angle) * Math.cos(angle * 2) * Math.cos(angle * 4) * Math.cos(angle * 8);
             weight[0] *= Math.cos(angle * 16) * Math.cos(angle * 32);
-            weight[1] = angle * 63.5;
+            weight[1] = Math.acos(weight[0]);
         }
         weight[0] = Math.abs(weight[0]);
         return weight;
