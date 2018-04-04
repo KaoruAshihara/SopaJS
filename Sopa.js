@@ -1,10 +1,10 @@
-// Sopa.js version 1.2.0
+// Sopa.js version 1.2.3
 // JavaScript source code for reproducing a SOPA file
 // Created by Kaoru Ashihara
 /*
 The MIT License (MIT)
 
-Copyright (c) 2017 AIST
+Copyright (c) 2018 AIST
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -107,15 +107,17 @@ Sopa = function (url) {
         dHann = new Float32Array(fftSize);  // Array for the window function
         var dRamp = fftSize / 8;
         for (var iInt = 0; iInt < fftSize; iInt++) {
+
             if (iInt < dRamp) {
-                dHann[iInt] = (1 - Math.cos(Math.PI * iInt / dRamp)) / 4;
+                dHann[iInt] = (0.54 - Math.cos(Math.PI * iInt / dRamp) * 0.46) / 2;
             }
             else if (iInt >= fftSize - dRamp) {
-                dHann[iInt] = (1 - Math.cos(Math.PI * (fftSize - iInt) / dRamp)) / 4;
+                dHann[iInt] = (0.54 - Math.cos(Math.PI * (fftSize - iInt) / dRamp) * 0.46) / 2;
             }
             else {
                 dHann[iInt] = 1 / 2;
-            }
+            }   
+//            dHann[iInt] = 0.27 - Math.cos(Math.PI * 2 * iInt / fftSize) * 0.23;
         }
         // Prepare coordinates vectors ****************
         for (var iSectNum = 0; iSectNum < 254; iSectNum++) {
@@ -462,7 +464,6 @@ Sopa = function (url) {
         var dPhaseL;
         var dPhaseImageR;
         var dPhaseImageL;
-        var dWeight = 1;
         var dPhase = 0;
         var iNumber;
         var iSecond;
@@ -470,6 +471,7 @@ Sopa = function (url) {
         var iSecondImage;
         var iBin;
         var nAtt = 2048.0;
+        var avr;
         var pp = new Array(2);
         var dReR = new Float32Array(iSize);
         var dReL = new Float32Array(iSize);
@@ -591,16 +593,14 @@ Sopa = function (url) {
                     if (cardioid > 0) {
                         var coord = this.initCoord(dir);
                         var inate = this.initCoord(dirsec);
-                        var vecMean = this.getUnitVector(coord, inate);
-                        pp = this.polar(vecFocus, vecMean);
-                        dWeight = pp[0];
-                        dPhase = pp[1];
-                    }
-                    else {
-                        dWeight = 1;
+                        pp = this.polar(vecFocus, coord, inate);
                         dPhase = 0;
                     }
-                    dWeight /= nAtt;
+                    else {
+                        pp = 1;
+                        dPhase = 0;
+                    }
+                    avr = pp / nAtt;
 /*
                     if (horizontalAngle == 0) {
                         dil = dirArray[dil][horizontalAngle][verticalAngle];
@@ -615,10 +615,10 @@ Sopa = function (url) {
                         dilsec = dirArray[dilsec][72 - horizontalAngle][verticalAngle]; */
                     iNumber = 512 * dir + iFreq;
                     iNumImage = 512 * dir + iImg;
-                    var nPwr = hrtf_buffer[iNumber] * dWeight;
+                    var nPwr = hrtf_buffer[iNumber] * avr;
                     iSecond = 512 * dirsec + iFreq;
                     iSecondImage = 512 * dirsec + iImg;
-                    nPwr += hrtf_buffer[iSecond] * dWeight;
+                    nPwr += hrtf_buffer[iSecond] * avr;
                     nPwr /= 2;
                     dSpR = pcm[iBin] * nPwr;
                     var nPhase = phase_buffer[iNumber] / 10000.0;
@@ -631,8 +631,8 @@ Sopa = function (url) {
                             nPhase -= Math.PI;
                     }
                     dPhaseR = image[iBin] + nPhase + dPhase;
-                    nPwr = hrtf_buffer[iNumImage] * dWeight;
-                    nPwr += hrtf_buffer[iSecondImage] * dWeight;
+                    nPwr = hrtf_buffer[iNumImage] * avr;
+                    nPwr += hrtf_buffer[iSecondImage] * avr;
                     nPwr /= 2;
                     dSpImageR = pcm[iMirror] * nPwr;
                     nPhase = phase_buffer[iNumImage] / 10000.0;
@@ -647,10 +647,10 @@ Sopa = function (url) {
                     dPhaseImageR = image[iMirror] + nPhase - dPhase;
                     iNumber = 512 * dil + iFreq;
                     iNumImage = 512 * dil + iImg;
-                    nPwr = hrtf_buffer[iNumber] * dWeight;
+                    nPwr = hrtf_buffer[iNumber] * avr;
                     iSecond = 512 * dilsec + iFreq;
                     iSecondImage = 512 * dilsec + iImg;
-                    nPwr += hrtf_buffer[iSecond] * dWeight;
+                    nPwr += hrtf_buffer[iSecond] * avr;
                     nPwr /= 2;
                     dSpL = pcm[iBin] * nPwr;
                     nPhase = phase_buffer[iNumber] / 10000.0;
@@ -663,8 +663,8 @@ Sopa = function (url) {
                             nPhase -= Math.PI;
                     }
                     dPhaseL = image[iBin] + nPhase + dPhase;
-                    nPwr = hrtf_buffer[iNumImage] * dWeight;
-                    nPwr += hrtf_buffer[iSecondImage] * dWeight;
+                    nPwr = hrtf_buffer[iNumImage] * avr;
+                    nPwr += hrtf_buffer[iSecondImage] * avr;
                     nPwr /= 2;
                     dSpImageL = pcm[iMirror] * nPwr;
                     nPhase = phase_buffer[iNumImage] / 10000.0;
@@ -1147,36 +1147,63 @@ Sopa = function (url) {
     /*
     /   Get weight value of the target direction
     */
-    Sopa.prototype.polar = function (focus, target) {
-        var weight = new Array(2);
-        var angle;
-        var theta;
-        var dot;
+    Sopa.prototype.polar = function (focus,first,second) {
+        var weight;
+        var center = new Array(3);
+        var dScal,dCos,dTheta;
+        var phdif0,s0;
+        var dot0,deg0;
+
+        // image direction
+        center[0] = first[0] + second[0];
+        center[1] = first[1] + second[1];
+        center[2] = first[2] + second[2];
+
+        dScal = Math.sqrt(center[0] * center[0] + center[1] * center[1] + center[2] * center[2]);
+        if (dScal > 0) {
+            center[0] /= dScal;
+            center[1] /= dScal;
+            center[2] /= dScal;
+        }
+
+        dCos = first[0] * second[0] + first[1] * second[1] + first[2] * second[2];
+        if (dCos > 1)
+            dCos = 1;
+        else if (dCos < -1)
+            dCos = -1;
+        dTheta = Math.acos(dCos) / 2;
+        dCos = Math.cos(dTheta);
 
         // dot product
-        dot = target[0] * focus[0] + target[1] * focus[1] + target[2] * focus[2];
+        dot0 = center[0] * focus[0] + center[1] * focus[1] + center[2] * focus[2];
+        if (dot0 > 1)
+            dot0 = 1;
+        else if (dot0 < -1)
+            dot0 = -1;
 
-        theta = Math.acos(dot);     //  Angle (0 <= theta < PI)
+        // phase difference
+        deg0 = Math.acos(dot0);
+
+        phdif0 = Math.PI * Math.cos(deg0) * dCos - Math.PI;
+        phdif0 /= 2;
+
         if (cardioid == 1) {
-            angle = rightAngle * (1 - Math.cos(theta) * Math.cos(target[3]));
-            //            weight = Math.cos(angle / 2);
-            weight[0] = (1 + Math.cos(angle)) / 2;
-            weight[1] = Math.acos(weight[0]);
+            weight = (1 + Math.cos(phdif0)) / 2;
         }
         else if (cardioid == 2) {
-            angle = (Math.PI / 5) * (1 - Math.cos(theta) * Math.cos(target[3]));
-            weight[0] = Math.cos(angle / 2) * Math.cos(angle) * Math.cos(angle * 2) * Math.cos(angle * 4) * Math.cos(angle * 8);
-//            weight[1] = angle * 15.5;
-            weight[1] = Math.acos(weight[0]);
+            s0 = Math.PI * Math.sin(deg0) * dCos * 7 / 18;
+            weight = (1 + Math.cos(phdif0)) * Math.cos(s0) / 2;
         }
         else if (cardioid == 3) {
-            angle = (Math.PI / 5) * (1 - Math.cos(theta) * Math.cos(target[3]));
-            weight[0] = Math.cos(angle / 2) * Math.cos(angle) * Math.cos(angle * 2) * Math.cos(angle * 4) * Math.cos(angle * 8);
-            weight[0] *= Math.cos(angle * 16) * Math.cos(angle * 32);
-            weight[1] = Math.acos(weight[0]);
+			s0 = Math.PI * Math.sin(deg0) * dCos;
+			if(phdif0 < -rightAngle)
+				weight = 0;
+			else{
+				weight = (1 + Math.cos(phdif0)) * Math.cos(s0 * 11 / 18) * Math.cos(s0 / 2) * Math.cos(s0 * 5 / 9) / 2;
+				weight *= (1 + Math.cos(phdif0)) / 2;
+			}
         }
-        weight[0] = Math.abs(weight[0]);
-        return weight;
+        return Math.abs(weight);
     };
 
     Sopa.prototype.getUnitVector = function (v0, v1) {
