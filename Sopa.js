@@ -1,10 +1,10 @@
-// Sopa.js version 1.2.3
+// Sopa.js version 1.2.4
 // JavaScript source code for reproducing a SOPA file
 // Created by Kaoru Ashihara
 /*
 The MIT License (MIT)
 
-Copyright (c) 2018 AIST
+Copyright (c) 2019 AIST
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -419,6 +419,7 @@ Sopa = function (url) {
                 dummy.start(0);
                 dummy.connect(scrproc);
             }   */
+            audiocontext.resume();
 
             scrproc.onaudioprocess = function (audioProcessingEvent) {
                 _this.Process.call(_this, audioProcessingEvent);
@@ -586,21 +587,23 @@ Sopa = function (url) {
                         dir = dirsec;
                     else if (dirsec > 253)
                         dirsec = dir;
-                    dir = dirArray[dir][horizontalAngle][verticalAngle];
-                    dil = this.opposit(dir);
-                    dirsec = dirArray[dirsec][horizontalAngle][verticalAngle];
-                    dilsec = this.opposit(dirsec);
-                    if (cardioid > 0) {
-                        var coord = this.initCoord(dir);
-                        var inate = this.initCoord(dirsec);
-                        pp = this.polar(vecFocus, coord, inate);
-                        dPhase = 0;
+                    if (dir >= 0 && dir < 256) {
+                        dir = dirArray[dir][horizontalAngle][verticalAngle];
+                        dil = this.opposit(dir);
+                        dirsec = dirArray[dirsec][horizontalAngle][verticalAngle];
+                        dilsec = this.opposit(dirsec);
+                        if (cardioid > 0) {
+                            var coord = this.initCoord(dir);
+                            var inate = this.initCoord(dirsec);
+                            pp = this.polar(vecFocus, coord, inate);
+                            dPhase = 0;
+                        }
+                        else {
+                            pp = 1;
+                            dPhase = 0;
+                        }
+                        avr = pp / nAtt;
                     }
-                    else {
-                        pp = 1;
-                        dPhase = 0;
-                    }
-                    avr = pp / nAtt;
 /*
                     if (horizontalAngle == 0) {
                         dil = dirArray[dil][horizontalAngle][verticalAngle];
