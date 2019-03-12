@@ -1,4 +1,4 @@
-// Sopa.js version 1.2.4
+// Sopa.js version 1.2.6
 // JavaScript source code for reproducing a SOPA file
 // Created by Kaoru Ashihara
 /*
@@ -85,6 +85,7 @@ Sopa = function (url) {
         try {
             AudioContext = window.AudioContext || window.webkitAudioContext;
             audiocontext = new AudioContext();
+            this.unlockAudioContext(audiocontext);
         }
         catch (e) {
             alert("Web Audio API is not supported in this browser")
@@ -105,7 +106,7 @@ Sopa = function (url) {
 
         // Prepare window function ****************
         dHann = new Float32Array(fftSize);  // Array for the window function
-        var dRamp = fftSize / 8;
+        var dRamp = fftSize / 3;
         for (var iInt = 0; iInt < fftSize; iInt++) {
 
             if (iInt < dRamp) {
@@ -142,6 +143,15 @@ Sopa = function (url) {
         }
         scrproc = audiocontext.createScriptProcessor(bufsize, 2, 2);
         return (true);
+    }
+
+    this.unlockAudioContext = function(audioCtx) {
+        if (audioCtx.state !== 'suspended') return;
+        const b = document.body;
+        const events = ['touchstart', 'touchend', 'mousedown', 'keydown'];
+        events.forEach(e => b.addEventListener(e, unlock, false));
+        function unlock() { audioCtx.resume().then(clean); }
+        function clean() { events.forEach(e => b.removeEventListener(e, unlock)); }
     }
 
     /*
@@ -419,7 +429,6 @@ Sopa = function (url) {
                 dummy.start(0);
                 dummy.connect(scrproc);
             }   */
-            audiocontext.resume();
 
             scrproc.onaudioprocess = function (audioProcessingEvent) {
                 _this.Process.call(_this, audioProcessingEvent);
